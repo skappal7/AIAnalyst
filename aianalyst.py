@@ -3,13 +3,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.express as px
 import seaborn as sns
-import tempfile
-import os
 import json
 
 from transformers import pipeline
 from sklearn.linear_model import LinearRegression
-import numpy as np
 
 # -------------------------------
 # Custom CSS & SVG iconography
@@ -124,9 +121,9 @@ if uploaded_file is not None:
         # -------------------------------
         # Load Hugging Face Model for NLP
         # -------------------------------
-        @st.cache(allow_output_mutation=True)
+        @st.cache_resource
         def load_nlp_model():
-            # Using a lightweight text2text-generation model
+            # Using a lightweight text-to-text generation model.
             return pipeline("text2text-generation", model="google/flan-t5-small")
         
         nlp_pipeline = load_nlp_model()
@@ -135,23 +132,30 @@ if uploaded_file is not None:
         # NLP Parsing via Hugging Face Transformers
         # -------------------------------
         def parse_instruction(instruction):
+            # Refined prompt to encourage valid JSON output.
             prompt = (
-                "You are an assistant that converts natural language instructions for data visualization and data analysis into a JSON object. "
-                "The JSON object must have a key 'action' with one of the following values: 'visualization' or 'analysis'.\n"
-                "If 'action' is 'visualization', include a key 'chart_type' with one of these values: 'line', 'bar', 'histogram', 'scatter', 'pie', 'box'. "
-                "For 'line', 'bar', 'scatter', and 'box' charts, include keys 'x' and 'y' for the x-axis and y-axis column names. "
-                "For 'histogram' and 'pie' charts, include key 'column'.\n"
-                "If 'action' is 'analysis', include a key 'analysis_type' with one of these values: 'summary', 'correlation', 'regression', 'missing_values'. "
-                "For 'regression', include keys 'x' and 'y' indicating the independent and dependent variables.\n"
-                "Return only the JSON object without any additional text.\n"
+                "You are an assistant that converts natural language instructions for data visualization and analysis into a valid JSON object. "
+                "The JSON object must contain exactly one key 'action' with one of the following values: 'visualization' or 'analysis'.\n\n"
+                "If 'action' is 'visualization', then the JSON object must also include a key 'chart_type' with one of these values: 'line', 'bar', 'histogram', 'scatter', 'pie', or 'box'. "
+                "For charts that require axes, include keys 'x' and 'y' with column names from the dataset. For 'histogram' and 'pie', include a key 'column'.\n\n"
+                "If 'action' is 'analysis', then include a key 'analysis_type' with one of these values: 'summary', 'correlation', 'regression', or 'missing_values'. "
+                "For regression, include keys 'x' and 'y' for the independent and dependent variables.\n\n"
+                "Return only a valid JSON string that can be parsed by json.loads, and do not include any extra text.\n\n"
                 f"Instruction: {instruction}"
             )
             try:
-                result = nlp_pipeline(prompt, max_length=200, do_sample=False)
+                result = nlp_pipeline(prompt, max_length=250, do_sample=False)
                 generated_text = result[0]['generated_text'].strip()
+                # Debug: Show raw generated text if needed.
+                st.write("Raw model output:", generated_text)
                 parsed = json.loads(generated_text)
+                # Verify that the parsed JSON has a valid action.
+                if parsed.get("action") not in ["visualization", "analysis"]:
+                    st.error("Parsed JSON does not have a valid 'action' key.")
+                    parsed = {"action": "unknown"}
             except Exception as e:
                 st.error("Error parsing model output to JSON. Please refine your instruction.")
+                st.error(f"Parsing Exception: {e}")
                 parsed = {"action": "unknown"}
             return parsed
 
@@ -288,7 +292,6 @@ if uploaded_file is not None:
                     st.subheader("Regression Analysis")
                     st.write(f"Coefficient (slope): {model.coef_[0]:.4f}")
                     st.write(f"Intercept: {model.intercept_:.4f}")
-                    # Plot regression line over scatter
                     fig, ax = plt.subplots(figsize=(8, 4))
                     ax.scatter(X, Y, color='#9B59B6', label="Data")
                     ax.plot(X, predictions, color='red', label="Regression Line")
