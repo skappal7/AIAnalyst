@@ -134,14 +134,14 @@ if uploaded_file is not None:
         def parse_instruction(instruction):
             # Refined prompt to encourage valid JSON output.
             prompt = (
-                "You are an assistant that converts natural language instructions for data visualization and analysis into a valid JSON object. "
-                "The JSON object must contain exactly one key 'action' with one of the following values: 'visualization' or 'analysis'.\n\n"
-                "If 'action' is 'visualization', then the JSON object must also include a key 'chart_type' with one of these values: 'line', 'bar', 'histogram', 'scatter', 'pie', or 'box'. "
-                "For charts that require axes, include keys 'x' and 'y' with column names from the dataset. For 'histogram' and 'pie', include a key 'column'.\n\n"
-                "If 'action' is 'analysis', then include a key 'analysis_type' with one of these values: 'summary', 'correlation', 'regression', or 'missing_values'. "
-                "For regression, include keys 'x' and 'y' for the independent and dependent variables.\n\n"
-                "Return only a valid JSON string that can be parsed by json.loads, and do not include any extra text.\n\n"
-                f"Instruction: {instruction}"
+                    "You are an assistant that converts natural language instructions for data visualization and analysis into a valid JSON object. "
+                    "The JSON object must contain exactly one key 'action' with one of the following values: 'visualization' or 'analysis'.\n\n"
+                    "If 'action' is 'visualization', then the JSON object must also include a key 'chart_type' with one of these values: 'line', 'bar', 'histogram', 'scatter', 'pie', or 'box'. "
+                    "For charts that require axes, include keys 'x' and 'y' with column names from the dataset. For 'histogram' and 'pie', include a key 'column'.\n\n"
+                    "If 'action' is 'analysis', then include a key 'analysis_type' with one of these values: 'summary', 'correlation', 'regression', or 'missing_values'. "
+                    "For regression, include keys 'x' and 'y' for the independent and dependent variables.\n\n"
+                    "Return only a valid JSON string that can be parsed by json.loads, and do not include any extra text.\n\n"
+                    "Instruction: Plot a line chart of revenue over time"
             )
             try:
                 result = nlp_pipeline(prompt, max_length=250, do_sample=False)
