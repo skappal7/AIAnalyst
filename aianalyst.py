@@ -3,8 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.express as px
 import seaborn as sns
-import json
-
 from transformers import pipeline
 from sklearn.linear_model import LinearRegression
 
@@ -94,7 +92,7 @@ st.markdown("""
     <h1>Data Discovery, Analysis & Visualization</h1>
 </div>
 """, unsafe_allow_html=True)
-st.markdown("#### Powered by Hugging Face Transformers for NLP-based command parsing")
+st.markdown("#### Powered by Hugging Face Zero-Shot Classification for command parsing")
 
 # -------------------------------
 # File Upload & Data Processing
@@ -119,45 +117,87 @@ if uploaded_file is not None:
         st.dataframe(df.head())
 
         # -------------------------------
-        # Load Hugging Face Model for NLP
+        # Load Zero-Shot Classifier
         # -------------------------------
         @st.cache_resource
-        def load_nlp_model():
-            # Using a lightweight text-to-text generation model.
-            return pipeline("text2text-generation", model="google/flan-t5-small")
+        def load_classifier():
+            return pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
         
-        nlp_pipeline = load_nlp_model()
+        classifier = load_classifier()
 
         # -------------------------------
-        # NLP Parsing via Hugging Face Transformers
+        # Instruction Parsing using Zero-Shot Classification
         # -------------------------------
-        def parse_instruction(instruction):
-            # Refined prompt to encourage valid JSON output.
-            prompt = (
-                    "You are an assistant that converts natural language instructions for data visualization and analysis into a valid JSON object. "
-                    "The JSON object must contain exactly one key 'action' with one of the following values: 'visualization' or 'analysis'.\n\n"
-                    "If 'action' is 'visualization', then the JSON object must also include a key 'chart_type' with one of these values: 'line', 'bar', 'histogram', 'scatter', 'pie', or 'box'. "
-                    "For charts that require axes, include keys 'x' and 'y' with column names from the dataset. For 'histogram' and 'pie', include a key 'column'.\n\n"
-                    "If 'action' is 'analysis', then include a key 'analysis_type' with one of these values: 'summary', 'correlation', 'regression', or 'missing_values'. "
-                    "For regression, include keys 'x' and 'y' for the independent and dependent variables.\n\n"
-                    "Return only a valid JSON string that can be parsed by json.loads, and do not include any extra text.\n\n"
-                    "Instruction: Plot a line chart of revenue over time"
-            )
-            try:
-                result = nlp_pipeline(prompt, max_length=250, do_sample=False)
-                generated_text = result[0]['generated_text'].strip()
-                # Debug: Show raw generated text if needed.
-                st.write("Raw model output:", generated_text)
-                parsed = json.loads(generated_text)
-                # Verify that the parsed JSON has a valid action.
-                if parsed.get("action") not in ["visualization", "analysis"]:
-                    st.error("Parsed JSON does not have a valid 'action' key.")
-                    parsed = {"action": "unknown"}
-            except Exception as e:
-                st.error("Error parsing model output to JSON. Please refine your instruction.")
-                st.error(f"Parsing Exception: {e}")
-                parsed = {"action": "unknown"}
-            return parsed
+        def parse_instruction(instruction, df):
+            # Step 1: Determine domain: visualization or analysis.
+            domain_candidates = ["visualization", "analysis"]
+            result_domain = classifier(instruction, domain_candidates)
+            domain = result_domain["labels"][0].lower()
+            command = {}
+            if domain == "visualization":
+                command["action"] = "visualization"
+                vis_candidates = ["line chart", "bar chart", "histogram", "scatter plot", "pie chart", "box plot"]
+                result_vis = classifier(instruction, vis_candidates)
+                vis_type = result_vis["labels"][0].lower()
+                if vis_type == "line chart":
+                    command["chart_type"] = "line"
+                elif vis_type == "bar chart":
+                    command["chart_type"] = "bar"
+                elif vis_type == "histogram":
+                    command["chart_type"] = "histogram"
+                elif vis_type == "scatter plot":
+                    command["chart_type"] = "scatter"
+                elif vis_type == "pie chart":
+                    command["chart_type"] = "pie"
+                elif vis_type == "box plot":
+                    command["chart_type"] = "box"
+                # Extract candidate column names from the instruction (case-insensitive match)
+                candidate_cols = [col for col in df.columns if col.lower() in instruction.lower()]
+                if command["chart_type"] in ["line", "bar", "scatter", "box"]:
+                    if len(candidate_cols) >= 2:
+                        command["x"] = candidate_cols[0]
+                        command["y"] = candidate_cols[1]
+                    else:
+                        # Fallback: choose first two numeric columns if available
+                        numeric_cols = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
+                        if len(numeric_cols) >= 2:
+                            command["x"] = numeric_cols[0]
+                            command["y"] = numeric_cols[1]
+                        else:
+                            command["x"] = df.columns[0]
+                            command["y"] = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+                elif command["chart_type"] in ["histogram", "pie"]:
+                    command["column"] = candidate_cols[0] if candidate_cols else df.columns[0]
+            
+            elif domain == "analysis":
+                command["action"] = "analysis"
+                analysis_candidates = ["summary statistics", "correlation", "regression analysis", "missing values"]
+                result_analysis = classifier(instruction, analysis_candidates)
+                analysis_type = result_analysis["labels"][0].lower()
+                if analysis_type == "summary statistics":
+                    command["analysis_type"] = "summary"
+                elif analysis_type == "correlation":
+                    command["analysis_type"] = "correlation"
+                elif analysis_type == "regression analysis":
+                    command["analysis_type"] = "regression"
+                elif analysis_type == "missing values":
+                    command["analysis_type"] = "missing_values"
+                if command.get("analysis_type") == "regression":
+                    candidate_cols = [col for col in df.columns if col.lower() in instruction.lower()]
+                    if len(candidate_cols) >= 2:
+                        command["x"] = candidate_cols[0]
+                        command["y"] = candidate_cols[1]
+                    else:
+                        numeric_cols = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
+                        if len(numeric_cols) >= 2:
+                            command["x"] = numeric_cols[0]
+                            command["y"] = numeric_cols[1]
+                        else:
+                            command["x"] = df.columns[0]
+                            command["y"] = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+            else:
+                command["action"] = "unknown"
+            return command
 
         # -------------------------------
         # Visualization Generation Functions
@@ -312,7 +352,7 @@ if uploaded_file is not None:
                 st.error("Unsupported analysis type.")
 
         # -------------------------------
-        # Handle the Parsed Command
+        # Handle User Instruction
         # -------------------------------
         st.markdown("### Enter Your Instruction")
         st.info(
@@ -326,14 +366,12 @@ if uploaded_file is not None:
         )
         instruction = st.text_input("Enter your instruction for data visualization or analysis")
         if st.button("Process Instruction") and instruction:
-            with st.spinner("Processing instruction with Hugging Face model..."):
-                command = parse_instruction(instruction)
+            command = parse_instruction(instruction, df)
             st.markdown("### Parsed Command from NLP")
             st.write(command)
-            action = command.get("action")
-            if action == "visualization":
+            if command.get("action") == "visualization":
                 generate_visualization(command, df)
-            elif action == "analysis":
+            elif command.get("action") == "analysis":
                 generate_analysis(command, df)
             else:
-                st.error("The parsed command did not specify a valid action.")
+                st.error("The instruction could not be parsed into a valid command.")
