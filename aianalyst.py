@@ -7,7 +7,7 @@ import tempfile
 import os
 
 # LlamaIndex imports (using free/default models)
-from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader, ServiceContext
+from llama_index import GPTSimpleVectorIndex, SimpleDirectoryReader, ServiceContext
 
 # -------------------------------
 # Custom CSS & SVG iconography
@@ -137,7 +137,7 @@ if uploaded_file is not None:
         try:
             documents = SimpleDirectoryReader(temp_dir).load_data()
             service_context = ServiceContext.from_defaults()
-            index = GPTVectorStoreIndex.from_documents(documents, service_context=service_context)
+            index = GPTSimpleVectorIndex.from_documents(documents, service_context=service_context)
         except Exception as e:
             st.error(f"Error building LlamaIndex: {e}")
             index = None
